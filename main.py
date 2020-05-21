@@ -26,8 +26,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--verbose', type=int, default=2)
 # Workload parameters
 parser.add_argument('--backend', type=int, default=0, help='database to use: {0=postgres, 1=sqlserver}')
-parser.add_argument('--workload_size', type=int, default=5, help='size of workload')
-parser.add_argument('--index_limit', type=int, default=3, help='maximum number of index that can be created')
+parser.add_argument('--workload_size', type=int, default=10, help='size of workload')
+parser.add_argument('--index_limit', type=int, default=4, help='maximum number of index that can be created')
 parser.add_argument('--tpch_queries', type=int, nargs='+', default=[4, 5, 6],
                     help='tpc-h queries used to create workload', choices=[1, 3, 4, 5, 6, 13, 14])
 

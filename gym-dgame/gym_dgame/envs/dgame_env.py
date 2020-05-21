@@ -8,7 +8,7 @@ import gym
 import random
 import numpy as np
 from gym.spaces import Discrete
-from lineitem_query import lineitem_query
+from lineitem_query.lineitem_query.lineitem_query import LineitemQuery
 
 
 class DatabaseGameEnv(gym.Env):
@@ -41,7 +41,7 @@ class DatabaseGameEnv(gym.Env):
         self.cost_cache = {}
 
         # query generator
-        self.query_gen = lineitem_query.LineitemQuery()
+        self.query_gen = LineitemQuery()
         self.columns = ['' for i in range(15)]
         col_dict = self.query_gen.column_dict()
         for k, v in col_dict.items():
@@ -178,6 +178,9 @@ class DatabaseGameEnv(gym.Env):
                 cost_estimate += cost
                 self.cost_cache[key] = cost
         return cost_estimate
+
+    def _render(self, mode, close):
+        print(f'Render: {mode} - {close}')
 
     def _reward(self):
         # @return: the reward or last action

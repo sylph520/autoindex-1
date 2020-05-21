@@ -39,17 +39,17 @@ parser.add_argument('--agent', default='cem', choices=['cem', 'dqn', 'naf', 'ddp
                     help='rl agent used for learning')
 parser.add_argument('--activation_function', default='relu', choices=['elu', 'relu', 'selu'],
                     help='activation function used in hidden layers')
-parser.add_argument('--memory_limit', type=int, default=500, help='episode memory size')
-parser.add_argument('--steps_warmup', type=int, default=1000, help='number of warmup steps')
+parser.add_argument('--memory_limit', type=int, default=60000, help='episode memory size')
+parser.add_argument('--steps_warmup', type=int, default=10000, help='number of warmup steps')
 parser.add_argument('--nb_steps_test', type=int, default=5, help='number of steps in test')
 parser.add_argument('--elite_frac', type=float, default=0.005, help='elite fraction used in rl model')
-parser.add_argument('--nb_steps_train', type=int, default=1000, help='number of steps in training')
+parser.add_argument('--nb_steps_train', type=int, default=2000000, help='number of steps in training')
 
 # Database parameters
 parser.add_argument('--host', default='localhost', help='hostname of database server')
 parser.add_argument('--database', default='ankur', help='database name')
 parser.add_argument('--user', default='postgres', help='database username')
-parser.add_argument('--password', default='postgres', help='database password')
+parser.add_argument('--password', default='', help='database password')
 
 args = parser.parse_args()
 

@@ -38,6 +38,8 @@ class DatabaseGameEnv(gym.Env):
         self.original_state = None
         self.current_state = None
 
+        self.cost_cache = {}
+
         # query generator
         self.query_gen = lineitem_query.LineitemQuery()
         self.columns = ['' for i in range(15)]
@@ -169,7 +171,13 @@ class DatabaseGameEnv(gym.Env):
         # Get the total cost estimate for the workload
         cost_estimate = 0.0
         for query in self.query_list:
-            cost_estimate += self.database.cost(query)
+            key = (query, tuple(self.index_list))
+            if key in self.cost_cache:
+                cost_estimate += self.cost_cache[key]
+            else:
+                cost = self.database.cost(query)
+                cost_estimate += cost
+                self.cost_cache[key] = cost
         return cost_estimate
 
     def _reward(self):

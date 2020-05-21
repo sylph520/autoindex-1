@@ -123,7 +123,8 @@ if __name__ == '__main__':
             )
 
     agent.compile()
-    agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
-    agent.save_weights('cem_{}_params.h5'.format(ENV_NAME), overwrite=True)
+    # agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
+    # agent.save_weights('cem_{}_params.h5'.format(ENV_NAME), overwrite=True)
+    agent.load_weights('cem_index_selection_evaluation.h5')
     env.train = False
-    agent.test(env, nb_episodes=args.nb_steps_test, visualize=True)
+    agent.test(env, nb_episodes=args.nb_steps_test, visualize=False)

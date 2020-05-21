@@ -56,9 +56,8 @@ class DatabaseGameEnv(gym.Env):
         frame = []
         self.query_list = []
         for i in range(self.workload_size):
-            sel, q = self.query_gen.get_query(random.randint(4, 6))
+            sel, q = self.query_gen.get_query(random.randint(1, 5))
             # sel, q = self.query_gen.get_query(random.randint(1, 1))
-
             # Save the selectivities and queries
             frame.append(sel)
             self.query_list.append(q)

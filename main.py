@@ -78,6 +78,10 @@ if __name__ == '__main__':
     database = postgres_executor.TPCHExecutor(postgres_config)
     database.connect()
 
+    # Enable hypothetical indexes
+    database.execute('create extension hypopg')
+    database._connection.commit()
+
     ENV_NAME = 'dgame-v0'
     env = gym.make(ENV_NAME)
 

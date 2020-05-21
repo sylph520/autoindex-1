@@ -14,6 +14,8 @@ class TPCHExecutor:
     def __init__(self, config: dict):
         self._config = config
 
+        self.index_name_oid_dict = {}
+
         self.column_list = [
             'p_partkey',
             'p_name',
@@ -180,17 +182,28 @@ class TPCHExecutor:
         Create an index on the given column
         '''
         table = self.table_name(column_name)
-        query = 'CREATE INDEX {}_{}_IDX ON {} ({});'.format(table, column_name, table, column_name)
-        self.execute(query)
-        # print('TPCHExecutor: Index created on {}'.format(column_name))
+
+        index_name = f"{table}_{column_name}_IDX"
+        query = f"select * from hypopg_create_index('create index on {table} ({column_name})')"
+        result = self.execute_and_fetch(query)
+        hypo_index_oid = result[0][0]
+        assert index_name not in self.index_name_oid_dict, "Index present that shouldn't be!"
+        self.index_name_oid_dict[index_name] = hypo_index_oid
 
     def drop_index(self, column_name: str):
         '''
         Drop the index on the given column
         '''
         table = self.table_name(column_name)
-        query = 'DROP INDEX IF EXISTS {}_{}_IDX;'.format(table, column_name)
-        self.execute(query)
+        index_name = f"{table}_{column_name}_IDX"
+        if index_name not in self.index_name_oid_dict:
+            return
+        hypo_index_oid = self.index_name_oid_dict[index_name]
+        del self.index_name_oid_dict[index_name]
+        query = f'select * from hypopg_drop_index({hypo_index_oid})'
+        result = self.execute_and_fetch(query)
+
+        assert result[0][0] is True, 'Drop Index failed!'
 
     def drop_all_indexes(self):
         '''

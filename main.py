@@ -25,6 +25,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--verbose', type=int, default=2)
 # Workload parameters
+parser.add_argument('--hypo', type=int, default=1)
 parser.add_argument('--backend', type=int, default=0, help='database to use: {0=postgres, 1=sqlserver}')
 parser.add_argument('--workload_size', type=int, default=10, help='size of workload')
 parser.add_argument('--index_limit', type=int, default=4, help='maximum number of index that can be created')
@@ -48,6 +49,7 @@ parser.add_argument('--nb_steps_train', type=int, default=2000000, help='number 
 # Database parameters
 parser.add_argument('--host', default='localhost', help='hostname of database server')
 parser.add_argument('--database', default='ankur', help='database name')
+parser.add_argument('--port', default='5432', help='database port')
 parser.add_argument('--user', default='postgres', help='database username')
 parser.add_argument('--password', default='', help='database password')
 
@@ -67,6 +69,7 @@ AGENT_DIC = {
 postgres_config = {
         'host': args.host,
         'database': args.database,
+        'port': args.port,
         'user': args.user,
         'password': args.password
         }
@@ -79,7 +82,8 @@ if __name__ == '__main__':
     database.connect()
 
     # Enable hypothetical indexes
-    database.execute('create extension hypopg')
+    if args.hypo:
+        database.execute('create extension if not exist hypopg')
     database._connection.commit()
 
     ENV_NAME = 'dgame-v0'

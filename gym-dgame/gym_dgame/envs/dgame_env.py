@@ -8,7 +8,7 @@ import gym
 import random
 import numpy as np
 from gym.spaces import Discrete
-from lineitem_query.lineitem_query.lineitem_query import LineitemQuery
+from lineitem_query.lineitem_query import LineitemQuery
 
 
 class DatabaseGameEnv(gym.Env):

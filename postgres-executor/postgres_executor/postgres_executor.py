@@ -98,7 +98,7 @@ class TPCHExecutor:
         Connect to the Postgres instance
         '''
         try:
-            self._connection = pg.connect('dbname=indexselection_tpch___10')
+            self._connection = pg.connect(**self._config)
             self._connection.autocommit = False
             print('Successfully connected to Postgres')
         except pg.DatabaseError as error:

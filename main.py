@@ -25,7 +25,6 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--verbose', type=int, default=2)
 # Workload parameters
-parser.add_argument('--hypo', type=int, default=1)
 parser.add_argument('--backend', type=int, default=0, help='database to use: {0=postgres, 1=sqlserver}')
 parser.add_argument('--workload_size', type=int, default=10, help='size of workload')
 parser.add_argument('--index_limit', type=int, default=4, help='maximum number of index that can be created')
@@ -52,6 +51,10 @@ parser.add_argument('--database', default='ankur', help='database name')
 parser.add_argument('--port', default='5432', help='database port')
 parser.add_argument('--user', default='postgres', help='database username')
 parser.add_argument('--password', default='', help='database password')
+# other parameters
+parser.add_argument('--hypo', type=int, default=1)
+parser.add_argument('--train', type=int, default=0)
+parser.add_argument('--sf', type=int, default=10)
 
 args = parser.parse_args()
 
@@ -127,8 +130,12 @@ if __name__ == '__main__':
             )
 
     agent.compile()
-    # agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
-    # agent.save_weights('cem_{}_params.h5'.format(ENV_NAME), overwrite=True)
-    agent.load_weights('cem_index_selection_evaluation.h5')
+    if args.train==1:
+        agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
+        agent.save_weights('cem_{}_params.h5'.format(ENV_NAME), overwrite=True)
+    elif args.train==0:
+        agent.load_weights(f'cem_{ENV_NAME}_sf{args.sf}_params.h5')
+    elif args.train==-1:
+        agent.load_weights('cem_index_selection_evaluation.h5')
     env.train = False
     agent.test(env, nb_episodes=args.nb_steps_test, visualize=False)

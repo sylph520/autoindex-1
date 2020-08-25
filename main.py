@@ -40,7 +40,7 @@ parser.add_argument('--agent', default='cem', choices=['cem', 'dqn', 'naf', 'ddp
 parser.add_argument('--activation_function', default='relu', choices=['elu', 'relu', 'selu'],
                     help='activation function used in hidden layers')
 parser.add_argument('--memory_limit', type=int, default=500, help='episode memory size')
-parser.add_argument('--steps_warmup', type=int, default=1000, help='number of warmup steps')
+parser.add_argument('--steps_warmup', type=int, default=100, help='number of warmup steps')
 parser.add_argument('--nb_steps_test', type=int, default=5, help='number of steps in test')
 parser.add_argument('--elite_frac', type=float, default=0.005, help='elite fraction used in rl model')
 parser.add_argument('--nb_steps_train', type=int, default=1000, help='number of steps in training')
@@ -48,8 +48,13 @@ parser.add_argument('--nb_steps_train', type=int, default=1000, help='number of 
 # Database parameters
 parser.add_argument('--host', default='localhost', help='hostname of database server')
 parser.add_argument('--database', default='ankur', help='database name')
+parser.add_argument('--port', default='5432', help='database port')
 parser.add_argument('--user', default='postgres', help='database username')
 parser.add_argument('--password', default='postgres', help='database password')
+# other parameters
+parser.add_argument('--hypo', type=int, default=1)
+parser.add_argument('--train', type=int, default=0)
+parser.add_argument('--sf', type=int, default=10)
 
 args = parser.parse_args()
 
@@ -67,6 +72,7 @@ AGENT_DIC = {
 postgres_config = {
         'host': args.host,
         'database': args.database,
+        'port': args.port,
         'user': args.user,
         'password': args.password
         }
@@ -75,9 +81,14 @@ if __name__ == '__main__':
 
     workload_size = args.workload_size
 
-    database = postgres_executor.TPCHExecutor(postgres_config)
+    database = postgres_executor.TPCHExecutor(postgres_config, args.hypo)
     database.connect()
 
+    # Enable hypothetical indexes
+    if args.hypo:
+        database.execute('create extension if not exists hypopg')
+
+    database._connection.commit()
     ENV_NAME = 'dgame-v0'
     env = gym.make(ENV_NAME)
 
@@ -119,7 +130,12 @@ if __name__ == '__main__':
             )
 
     agent.compile()
-    agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
-    agent.save_weights('cem_{}_params.h5'.format(ENV_NAME), overwrite=True)
+    if args.train == 1:
+        agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
+        agent.save_weights(f'cem_{ENV_NAME}_sf{args.sf}_{args.hypo}_params.h5', overwrite=True)
+    elif args.train == 0:
+        agent.load_weights(f'cem_{ENV_NAME}_sf{args.sf}_{args.hypo}_params.h5')
+    elif args.train == -1:
+        agent.load_weights('cem_index_selection_evaluation.h5')
     env.train = False
-    agent.test(env, nb_episodes=args.nb_steps_test, visualize=True)
+    agent.test(env, nb_episodes=args.nb_steps_test, visualize=False)

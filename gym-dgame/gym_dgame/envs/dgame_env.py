@@ -100,7 +100,7 @@ class DatabaseGameEnv(gym.Env):
         """
         Seed the ENV Randomizer
         """
-        random.seed(seed)
+        random.seed(66)
 
     def _print_index_list(self):
         # print the set of indexes

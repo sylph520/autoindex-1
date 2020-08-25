@@ -11,9 +11,9 @@ class TPCHExecutor:
     This class defines a class that connects to Postgres database with TPC-H tables loaded.
     This class can be used to execute queries and create indexes on these tables.
     '''
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, hypo:int):
         self._config = config
-
+        self.hypo = hypo
         self.column_list = [
             'p_partkey',
             'p_name',
@@ -179,7 +179,11 @@ class TPCHExecutor:
         Create an index on the given column
         '''
         table = self.table_name(column_name)
-        query = 'CREATE INDEX {}_{}_IDX ON {} ({});'.format(table, column_name, table, column_name)
+        index_name = f"{table}_{column_name}_IDX"
+        if not self.hypo:
+            query = 'CREATE INDEX {}_{}_IDX ON {} ({});'.format(table, column_name, table, column_name)
+        else:
+            query = f"select * from hypopg_create_index('create index on {table} ({column_name})')"
         self.execute(query)
         # print('TPCHExecutor: Index created on {}'.format(column_name))
 
@@ -195,8 +199,12 @@ class TPCHExecutor:
         '''
         Drop all indexes
         '''
-        for column in self.column_list:
-            self.drop_index(column)
+        if not self.hypo:
+            for column in self.column_list:
+                self.drop_index(column)
+        else:
+            query = 'select hypopg_reset()'
+            self.execute(query)
         # print('TPCHExecutor: Dropped all indexes')
 
     def get_column_list(self):

@@ -18,6 +18,8 @@ from rl.memory import EpisodeParameterMemory
 
 from postgres_executor import postgres_executor
 # from sqlserver_executor import sqlserver_executor
+from rl.callbacks import WandbLogger
+import wandb
 
 # Parse the commandline arguments
 parser = argparse.ArgumentParser()
@@ -55,6 +57,7 @@ parser.add_argument('--password', default='postgres', help='database password')
 parser.add_argument('--hypo', type=int, default=1)
 parser.add_argument('--train', type=int, default=0)
 parser.add_argument('--sf', type=int, default=10)
+parser.add_argument('--wandb_flag', type=int, default=0)
 
 args = parser.parse_args()
 
@@ -131,7 +134,11 @@ if __name__ == '__main__':
 
     agent.compile()
     if args.train == 1:
-        agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
+        if not args.wandb_flag:
+            agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
+        else:
+            agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose,
+                        callbacks=[WandbLogger()])
         agent.save_weights(f'cem_{ENV_NAME}_sf{args.sf}_{args.hypo}_params.h5', overwrite=True)
     elif args.train == 0:
         agent.load_weights(f'cem_{ENV_NAME}_sf{args.sf}_{args.hypo}_params.h5')

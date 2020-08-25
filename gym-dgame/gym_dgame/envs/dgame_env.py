@@ -175,3 +175,7 @@ class DatabaseGameEnv(gym.Env):
     def _reward(self):
         # @return: the reward or last action
         return (self.no_index_cost / self._get_workload_cost()) - 1.0
+
+    @property
+    def env(self):
+        return self

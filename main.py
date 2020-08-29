@@ -128,7 +128,7 @@ if __name__ == '__main__':
             memory=memory,
             batch_size=args.batch_size,
             nb_steps_warmup=args.steps_warmup,
-            train_interval=args.batch_size,
+            train_interval=1,
             elite_frac=args.elite_frac
             )
 
@@ -137,6 +137,7 @@ if __name__ == '__main__':
         if not args.wandb_flag:
             agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
         else:
+            wandb.init(project='autoindex-1')
             agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose,
                         callbacks=[WandbLogger()])
         agent.save_weights(f'cem_{ENV_NAME}_sf{args.sf}_{args.hypo}_params.h5', overwrite=True)
@@ -145,4 +146,5 @@ if __name__ == '__main__':
     elif args.train == -1:
         agent.load_weights('cem_index_selection_evaluation.h5')
     env.train = False
+    # env.database.hypo=False
     agent.test(env, nb_episodes=args.nb_steps_test, visualize=False)

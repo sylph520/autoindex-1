@@ -118,13 +118,17 @@ class DatabaseGameEnv(gym.Env):
         # check if the action is valid
         assert(action <= 15)
 
-        if self.train_step > self.step_limit:
+        # if not self.train and self.train_step == 150:
+        #     import ipdb; ipdb.set_trace()
+
+        if self.train_step >= self.step_limit:
             self._print_index_list()
-            return self._get_state(), 0, True, {}
+            return self._get_state(), self._reward(), True, {}
 
 
+        game_over = not (self.chances_left > 0)
         # check if the index is already created
-        if self.current_state[(action + 1) * (self.workload_size + 1) - 1] == 1:
+        if self.current_state[(action + 1) * (self.workload_size + 1) - 1] == 1 and not game_over:
             # index was already created or no query is using it
 #           self._print_index_list()
 #           return self._get_state(), 0, True, {}
@@ -152,6 +156,8 @@ class DatabaseGameEnv(gym.Env):
 
     def _reset(self):
         # @return: state after reset
+        # if not self.train:
+        #     import ipdb;ipdb.set_trace()
         self.database.drop_all_indexes()
         if (not self.train) or (self.train_episode_count % self.repeat_size == 0):
             self.original_state = self._generate_frame_matrix()
@@ -174,7 +180,11 @@ class DatabaseGameEnv(gym.Env):
 
     def _reward(self):
         # @return: the reward or last action
-        return (self.no_index_cost / self._get_workload_cost()) - 1.0
+        game_over = not (self.chances_left > 0) or self.train_step>=150
+        if not game_over:
+            return 0
+        else:
+            return (self.no_index_cost / self._get_workload_cost()) - 1.0
 
     @property
     def env(self):

@@ -3,7 +3,7 @@
 import gym
 import argparse
 import gym_dgame
-
+from keras.optimizers import Adam
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Flatten
 # from keras.optimizers import Adam
@@ -14,7 +14,8 @@ from rl.agents.dqn import NAFAgent
 from rl.agents.ddpg import DDPGAgent
 from rl.agents.sarsa import SARSAAgent
 
-from rl.memory import EpisodeParameterMemory
+from rl.memory import EpisodeParameterMemory, SequentialMemory
+from rl.policy import BoltzmannQPolicy
 
 from postgres_executor import postgres_executor
 # from sqlserver_executor import sqlserver_executor
@@ -103,38 +104,38 @@ if __name__ == '__main__':
     # create a model
     model = Sequential()
     model.add(Flatten(input_shape=(args.batch_size, observation_n)))
-
-    # Simple model
-    # model.add(Dense(nb_actions))
-    # model.add(Activation('softmax'))
-
     # Complex Deep NN Model
     for i in range(args.hidden_layers):
         model.add(Dense(args.hidden_units))
         model.add(Activation(args.activation_function))
-
     model.add(Dense(nb_actions))
     model.add(Activation('softmax'))
-
     print(model.summary())
 
     Agent = AGENT_DIC[args.agent]
-
-    memory = EpisodeParameterMemory(limit=args.memory_limit, window_length=args.batch_size)
-
-    agent = Agent(
-            model=model,
-            nb_actions=nb_actions,
-            memory=memory,
-            batch_size=args.batch_size,
-            nb_steps_warmup=args.steps_warmup,
-            train_interval=1,
-            elite_frac=args.elite_frac
-            )
-
-    agent.compile()
+    if args.agent == 'cem':
+        memory = EpisodeParameterMemory(limit=args.memory_limit, window_length=args.batch_size)
+        agent = Agent(
+                model=model,
+                nb_actions=nb_actions,
+                memory=memory,
+                batch_size=args.batch_size,
+                nb_steps_warmup=args.steps_warmup,
+                train_interval=1,
+                elite_frac=args.elite_frac
+                )
+        agent.compile()
+    elif args.agent == 'dqn':
+        memory = SequentialMemory(limit=args.memory_limit, window_length=args.batch_size)
+        policy = BoltzmannQPolicy()
+        agent = DQNAgent(
+            model = model, nb_actions=nb_actions, memory=memory, batch_size=args.batch_size,
+            nb_steps_warmup = args.steps_warmup, target_model_update=1e-2,
+            policy=policy)
+        agent.compile(Adam(lr=1e-3), metrics=['mae'])
     if args.train == 1:
         if not args.wandb_flag:
+            # import ipdb; ipdb.set_trace()
             agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
         else:
             wandb.init(project='autoindex-1')

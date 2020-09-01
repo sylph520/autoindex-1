@@ -40,7 +40,7 @@ parser.add_argument('--hidden_layers', type=int, default=4, help='number of hidd
 parser.add_argument('--hidden_units', type=int, default=8, help='number of hidden units in each hidden layer')
 parser.add_argument('--agent', default='cem', choices=['cem', 'dqn', 'naf', 'ddpg', 'sarsa'],
                     help='rl agent used for learning')
-parser.add_argument('--activation_function', default='relu', choices=['elu', 'relu', 'selu'],
+parser.add_argument('--activation_function', default='relu', choices=['elu', 'relu', 'selu', 'tanh'],
                     help='activation function used in hidden layers')
 parser.add_argument('--memory_limit', type=int, default=500, help='episode memory size')
 parser.add_argument('--steps_warmup', type=int, default=100, help='number of warmup steps')

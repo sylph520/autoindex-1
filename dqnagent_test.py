@@ -15,10 +15,11 @@ import wandb
 from postgres_executor import postgres_executor
 import gym_dgame
 import argparse 
+import argh
 
 # Parse the commandline arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--verbose', type=int, default=2)
+parser.add_argument('--verbose', type=int, default=0)
 # Workload parameters
 parser.add_argument('--backend', type=int, default=0, help='database to use: {0=postgres, 1=sqlserver}')
 parser.add_argument('--workload_size', type=int, default=5, help='size of workload')
@@ -41,16 +42,20 @@ parser.add_argument('--elite_frac', type=float, default=0.005, help='elite fract
 parser.add_argument('--nb_steps_train', type=int, default=1000, help='number of steps in training')
 
 # Database parameters
-parser.add_argument('--host', default='localhost', help='hostname of database server')
-parser.add_argument('--database', default='ankur', help='database name')
-parser.add_argument('--port', default='5432', help='database port')
-parser.add_argument('--user', default='postgres', help='database username')
-parser.add_argument('--password', default='postgres', help='database password')
+parser.add_argument('--host', default='/tmp', help='hostname of database server')
+parser.add_argument('--database', default='indexselection_tpch___1', help='database name')
+parser.add_argument('--port', default='5109', help='database port')
+parser.add_argument('--user', default='matrix', help='database username')
+parser.add_argument('--password', default='', help='database password')
 # other parameters
 parser.add_argument('--hypo', type=int, default=1)
 parser.add_argument('--train', type=int, default=0)
-parser.add_argument('--sf', type=int, default=10)
+parser.add_argument('--sf', type=int, default=1)
 parser.add_argument('--wandb_flag', type=int, default=0)
+parser.add_argument('--env_steps_before_train', type=int, default=1000)
+parser.add_argument('--min_rb_size', type=int, default=1000)
+parser.add_argument('--sample_size', type=int, default=50)
+parser.add_argument('--tgt_model_update', type=int, default=50)
 
 args = parser.parse_args()
 
@@ -74,13 +79,18 @@ class Trajactory:
 class ReplayBuffer:
     def __init__(self, buffer_size = 100000):
         self.buffer_size = buffer_size
-        self.buffer = deque(maxlen=buffer_size)
+#        self.buffer = deque(maxlen=buffer_size)
+        self.buffer = [None]*buffer_size
+        self.idx = 0
 
     def insert(self, traj):
-        self.buffer.append(traj)
+        self.buffer[self.idx % self.buffer_size] = traj
+        self.idx += 1
 
     def sample(self, num_samples):
-        assert num_samples <= len(self.buffer)
+        assert num_samples < min(self.idx, self.buffer_size)
+        if self.idx < self.buffer_size:
+            return sample(self.buffer[:self.idx], num_samples)
         return sample(self.buffer, num_samples)
 
 def update_tgt_model(m, tgt):
@@ -138,8 +148,7 @@ def train_step(model, state_transitions, tgt, num_actions, device, gamma = 0.99)
     model.opt.step()
     return loss
 
-
-if __name__ == "__main__":
+def main(name, test=False, chkpt=None, device='cpu'):
     workload_size = args.workload_size
     database = postgres_executor.TPCHExecutor(postgres_config, args.hypo)
     database.connect()
@@ -153,19 +162,31 @@ if __name__ == "__main__":
 
     env.initialize(database, workload_size, args.index_limit, 1, verbose=args.verbose)
 
-    wandb.init(project="autoindex-torch", name="dqn-ai")
-
-    min_rb_size = 500
-    sample_size = 150
-    eps_min = 0.01
-    eps_decay=0.999995
-    env_steps_before_train = 100
-    tgt_model_update = 100
+    eps_min                = 0.01
+    eps_decay              = 0.999995
+    min_rb_size            = args.min_rb_size            
+    sample_size            = args.sample_size            
+    env_steps_before_train = args.env_steps_before_train 
+    tgt_model_update       = args.tgt_model_update       
+    
+    
+    if not test:
+        wandb.init(project= "autoindex-torch", name=name)
+        wandb.config.update({
+            "min_rb_size"            : min_rb_size,
+            "sample_size"            : sample_size,
+            "env_steps_before_train" : env_steps_before_train,
+            "tgt_model_update"       : tgt_model_update,
+            })
+    
 
     last_observation = env.reset()
   # import ipdb; ipdb.set_trace()
     m = Model(env.observation_space.shape, env.action_space.n)
+    if chkpt is not None:
+        m.load_state_dict(torch.load(chkpt))
     tgt = Model(env.observation_space.shape, env.action_space.n)
+    update_tgt_model(m, tgt)
 
     rb = ReplayBuffer()
     steps_since_train = 0
@@ -177,9 +198,11 @@ if __name__ == "__main__":
 
     tq = tqdm()
     try:
-        while True:
+        while step_num < 1000000:
             tq.update(1)
             eps = eps_decay ** (step_num)
+            if test:
+                eps = 0
             if random() < eps:
                 action = env.action_space.sample()
             else:
@@ -193,17 +216,18 @@ if __name__ == "__main__":
 
             if done:
                 episode_rewards.append(rolling_reward)
+#                wandb.log({'episode_reward':rolling_reward}, step=step_num)
                 rolling_reward = 0
                 last_observation = env.reset()
 
             steps_since_train += 1
             step_num += 1
 
-            if len(rb.buffer) > min_rb_size and steps_since_train > env_steps_before_train:
+            if (not test) and rb.idx  > min_rb_size and steps_since_train > env_steps_before_train:
                 loss = train_step(m, rb.sample(sample_size), tgt, env.action_space.n, 'cpu')
                 wandb.log({'loss':loss.detach().item(), 'eps':eps, 'avg_reward':
                     np.mean(episode_rewards)}, step= step_num)
-                # print(step_num, loss.detach().item())
+
                 epochs_since_tgt += 1
                 if epochs_since_tgt > tgt_model_update:
                     print("update tgt model")
@@ -211,7 +235,11 @@ if __name__ == "__main__":
                     episode_rewards = []
                     epochs_since_tgt = 0
                     torch.save(tgt.state_dict(), f"models/{step_num}.pth")
+
                 steps_since_train = 0
 
     except KeyboardInterrupt:
         pass 
+
+if __name__ == "__main__":
+    main('dqn_db_test')

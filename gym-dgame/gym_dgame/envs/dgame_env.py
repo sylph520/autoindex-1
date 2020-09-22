@@ -17,7 +17,7 @@ class DatabaseGameEnv(gym.Env):
     """
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self):
+    def __init__(self, env_config):
         # flag to tell the env whether its used for training or test
         self.train = True
 
@@ -26,7 +26,7 @@ class DatabaseGameEnv(gym.Env):
         self.repeat_size = 0
         self.chances_left = 0
         self.train_step = 0
-        self.workload_size = 0
+        self.workload_size = env_config['workload_size']
         self.train_episode_count = 0
 
         self.database = None
@@ -48,6 +48,7 @@ class DatabaseGameEnv(gym.Env):
 
         # Index spaces
         self.action_space = Discrete(len(self.columns))
+        self.observation_space = Box(low=0, high=1.0, shape=(len(self.columns) * (self.workload_size + 1),))
 
     def _generate_frame_matrix(self):
         # generate a new workload
@@ -88,13 +89,12 @@ class DatabaseGameEnv(gym.Env):
         self.workload_size = workload_size
         self.original_state = self._generate_frame_matrix()
         self.current_state = np.copy(self.original_state)
-        self.observation_space = Box(low=0, high = 1.0, shape =(len(self.columns) * (self.workload_size + 1) + 1,) )
         self.database.drop_all_indexes()
         self.no_index_cost = self._get_workload_cost()
 
     def _get_state(self):
-        return np.hstack((self.current_state, self.train_step))
-        # return self.current_state
+        # return np.hstack((self.current_state, self.train_step))
+        return self.current_state
 
     def _seed(self, seed=None):
         """
@@ -113,7 +113,7 @@ class DatabaseGameEnv(gym.Env):
             print(self.index_list)
             print('***************************************************************')
 
-    def _step(self, action):
+    def step(self, action):
         self.train_step += 1
         # check if the action is valid
         assert(action <= 15)
@@ -154,7 +154,7 @@ class DatabaseGameEnv(gym.Env):
         self.index_list.append(self.columns[column_id])
         self.database.create_index(column_name)
 
-    def _reset(self):
+    def reset(self):
         # @return: state after reset
         # if not self.train:
         #     import ipdb;ipdb.set_trace()

@@ -1,30 +1,30 @@
-#!/usr/bin/env python
-
 import gym
 import argparse
 import gym_dgame
-from keras.optimizers import Adam
-from keras.models import Sequential
-from keras.layers import Dense, Activation, Flatten
-# from keras.optimizers import Adam
-
-from rl.agents.cem import CEMAgent
-from rl.agents.dqn import DQNAgent
-from rl.agents.dqn import NAFAgent
-from rl.agents.ddpg import DDPGAgent
-from rl.agents.sarsa import SARSAAgent
-
-from rl.memory import EpisodeParameterMemory, SequentialMemory
-from rl.policy import BoltzmannQPolicy
 
 from postgres_executor import postgres_executor
-# from sqlserver_executor import sqlserver_executor
+from keras.optimizers import Adam
+from rl.agents import CEMAgent, DQNAgent, DDPGAgent
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Flatten
+from rl.policy import BoltzmannQPolicy
 from rl.callbacks import WandbLogger
+from rl.memory import EpisodeParameterMemory, SequentialMemory
+# from sqlserver_executor import sqlserver_executor
 import wandb
+import ray
+from ray.tune.registry import register_env
+from ray.tune.logger import pretty_print
+from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG as dqn_default_conf
+from ray.rllib.agents.ppo import PPOTrainer, DEFAULT_CONFIG as ppo_default_conf
+import shutil
+import pandas as pd
+import bokeh
+import json
+from util.line_plots import plot_line, plot_line_with_min_max, plot_line_with_stddev
 
 # Parse the commandline arguments
 parser = argparse.ArgumentParser()
-
 
 parser.add_argument('--verbose', type=int, default=2)
 # Workload parameters
@@ -50,15 +50,17 @@ parser.add_argument('--nb_steps_train', type=int, default=1000, help='number of 
 
 # Database parameters
 parser.add_argument('--host', default='localhost', help='hostname of database server')
-parser.add_argument('--database', default='ankur', help='database name')
+parser.add_argument('--database', default='indexselection_tpch___1', help='database name')
 parser.add_argument('--port', default='5432', help='database port')
 parser.add_argument('--user', default='postgres', help='database username')
-parser.add_argument('--password', default='postgres', help='database password')
+parser.add_argument('--password', default='', help='database password')
 # other parameters
 parser.add_argument('--hypo', type=int, default=1)
 parser.add_argument('--train', type=int, default=0)
 parser.add_argument('--sf', type=int, default=10)
 parser.add_argument('--wandb_flag', type=int, default=0)
+parser.add_argument('--env_version', type = int, default = 0)
+parser.add_argument('--ray_flag', type = bool , default = True)
 
 args = parser.parse_args()
 
@@ -66,86 +68,169 @@ args = parser.parse_args()
 AGENT_DIC = {
         'cem': CEMAgent,
         'dqn': DQNAgent,
-        'naf': NAFAgent,
         'ddpg': DDPGAgent,
-        'sarsa': SARSAAgent
         }
 
 # from random import randrange as rand
+if args.user == 'postgres':
+    postgres_config = {
+            'database': args.database,
+            }
+else:
+    postgres_config = {
+            'host': args.host,
+            'database': args.database,
+            'port': args.port,
+            'user': args.user,
+            'password': args.password
+            }
 
-postgres_config = {
-        'host': args.host,
-        'database': args.database,
-        'port': args.port,
-        'user': args.user,
-        'password': args.password
-        }
 
-if __name__ == '__main__':
-
-    workload_size = args.workload_size
-
+def gym_env_creator(env_config):
+    ENV_NAME = env_config['env_name']
     database = postgres_executor.TPCHExecutor(postgres_config, args.hypo)
     database.connect()
 
-    # Enable hypothetical indexes
     if args.hypo:
         database.execute('create extension if not exists hypopg')
 
     database._connection.commit()
-    ENV_NAME = 'dgame-v0'
-    env = gym.make(ENV_NAME)
 
-    env.initialize(database, workload_size, args.index_limit, 1, verbose=args.verbose)
+    gym_env = gym.make(ENV_NAME, env_config=env_config)
+    gym_env.initialize(database, args.workload_size, args.index_limit, 1, verbose=args.verbose)
+    
+    return gym_env
 
-    nb_actions = env.action_space.n
-    observation_n = env.observation_space.n
+    
+def create_keras_rl_model(v = 0):
+    """create dqn model"""
+    if v == 0:
+        model = Sequential()
+        model.add(Flatten(input_shape=(args.batch_size, observation_n)))
+        # Complex Deep NN Model
+        for i in range(args.hidden_layers):
+            model.add(Dense(args.hidden_units))
+            model.add(Activation(args.activation_function))
+        model.add(Dense(nb_actions))
+        model.add(Activation('softmax'))
+        print(model.summary())
+    return model
 
-    # create a model
-    model = Sequential()
-    model.add(Flatten(input_shape=(args.batch_size, observation_n)))
-    # Complex Deep NN Model
-    for i in range(args.hidden_layers):
-        model.add(Dense(args.hidden_units))
-        model.add(Activation(args.activation_function))
-    model.add(Dense(nb_actions))
-    model.add(Activation('softmax'))
-    print(model.summary())
 
-    Agent = AGENT_DIC[args.agent]
-    if args.agent == 'cem':
-        memory = EpisodeParameterMemory(limit=args.memory_limit, window_length=args.batch_size)
-        agent = Agent(
-                model=model,
-                nb_actions=nb_actions,
-                memory=memory,
-                batch_size=args.batch_size,
-                nb_steps_warmup=args.steps_warmup,
-                train_interval=1,
-                elite_frac=args.elite_frac
-                )
-        agent.compile()
-    elif args.agent == 'dqn':
-        memory = SequentialMemory(limit=args.memory_limit, window_length=args.batch_size)
-        policy = BoltzmannQPolicy()
-        agent = DQNAgent(
-            model = model, nb_actions=nb_actions, memory=memory, batch_size=args.batch_size,
-            nb_steps_warmup = args.steps_warmup, target_model_update=1e-2,
-            policy=policy)
-        agent.compile(Adam(lr=1e-3), metrics=['mae'])
-    if args.train == 1:
-        if not args.wandb_flag:
-            # import ipdb; ipdb.set_trace()
-            agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
-        else:
-            wandb.init(project='autoindex-1')
-            agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose,
-                        callbacks=[WandbLogger()])
-        agent.save_weights(f'cem_{ENV_NAME}_sf{args.sf}_{args.hypo}_params.h5', overwrite=True)
-    elif args.train == 0:
-        agent.load_weights(f'cem_{ENV_NAME}_sf{args.sf}_{args.hypo}_params.h5')
-    elif args.train == -1:
-        agent.load_weights('cem_index_selection_evaluation.h5')
-    env.train = False
-    # env.database.hypo=False
-    agent.test(env, nb_episodes=args.nb_steps_test, visualize=False)
+def test_model():
+    pass
+
+
+def test_rllib():
+    ray.init(ignore_reinit_error=True, log_to_driver=False)
+    # config = ppo_default_conf.copy()
+    config = dqn_default_conf.copy()
+    config['num_workers'] = 1
+    # config['num_sgd_iter'] = 30
+    # config['sgd_minibatch_size'] = 128
+    config['model']['fcnet_hiddens'] = [100, 100]
+    # config['num_cpus_per_worker'] = 0
+    # agent = PPOTrainer(config, 'CartPole-v1')
+    agent = DQNTrainer(config, 'CartPole-v1')
+    # import ipdb; ipdb.set_trace()
+    print("rllib testing end")
+
+
+if __name__ == '__main__':
+   # test_rllib()
+    env_name = 'dgame-v0'
+    if args.ray_flag:
+        ray.init(ignore_reinit_error=True)
+        register_env('ray_env', gym_env_creator)
+        config = dqn_default_conf.copy()
+        config['env_config'] = {"env_name":"gym_dgame:dgame-v0", "workload_size": args.workload_size}
+        config['num_workers'] = 1
+        config['model']['fcnet_hiddens'] = [1, 256]
+        config['model']['fcnet_activation'] = 'relu'
+        config['gamma'] = 0.9
+        config['lr'] = 0.001
+        config['train_batch_size'] = 50
+        # trainer0 = DQNTrainer(config, 'CartPole-v1')
+        trainer = DQNTrainer(env='ray_env', config = config)
+
+        ckp_root = 'tmp/dqn/it'
+        shutil.rmtree(ckp_root, ignore_errors=True, onerror=None)
+        ray_results='ray_results/'
+        shutil.rmtree(ray_results, ignore_errors=True, onerror = None)
+
+        n_iter = 50
+        s = "{:3d} reward {:6.2f}/{:6.2f}/{:6.2f} len {:6.2f} saved {}"
+
+        results = []
+        episode_data = []
+        episode_json = []
+        result_strs = []
+
+        for n in range(n_iter):
+            result = trainer.train()
+            file_name = trainer.save(ckp_root)
+            results.append(result)
+            episode = {'n': n, 
+                   'episode_reward_min':  result['episode_reward_min'],  
+                   'episode_reward_mean': result['episode_reward_mean'], 
+                   'episode_reward_max':  result['episode_reward_max'],  
+                   'episode_len_mean':    result['episode_len_mean']
+                   }  
+            episode_data.append(episode)
+            episode_json.append(json.dumps(episode))
+            result_strs.append(
+                f'{n:3d}: Min/Mean/Max reward: {result["episode_reward_min"]:8.4f}/{result["episode_reward_mean"]:8.4f}/{result["episode_reward_max"]:8.4f}')
+            # results.append(f'{n+1} reward {result["episode_reward_mean"]:.3f}/'
+            #                f'{result["episode_reward_min"]:.3f}/{result["episode_reward_max"]:.3f}'
+            #                # f'len {result["episode_len_mean"]} saved {file_name}'
+            #                )
+        df = pd.DataFrame(data=episode_data)
+        for i in range(len(result_strs)):
+            print(result_strs[i])
+        bokeh.io.reset_output()
+        bokeh.io.output_notebook()
+        plot_line_with_min_max(df, x_col='n', y_col='episode_reward_mean', min_col='episode_reward_min', max_col='episode_reward_max',
+                          title='Episode Rewards', x_axis_label='n', y_axis_label='reward')
+        print("testing end")
+    else:
+        ENV_NAME = 'dgame-v0'
+        env = gym_env_creator({})
+        workload_size = args.workload_size
+        nb_actions = env.action_space.n
+        observation_n = env.observation_space.n
+        # create a model
+        Agent = AGENT_DIC[args.agent]
+        model = create_keras_rl_model()
+        # set up rl agent
+        if args.agent == 'dqn':
+            memory = SequentialMemory(limit=args.memory_limit, window_length=args.batch_size)
+            policy = BoltzmannQPolicy()
+            agent = DQNAgent(
+                model = model, nb_actions=nb_actions, memory=memory, batch_size=args.batch_size,
+                nb_steps_warmup = args.steps_warmup, target_model_update=1e-2,
+                policy=policy)
+            agent.compile(Adam(lr=1e-3), metrics=['mae'])
+        elif args.agent == 'cem':
+            model = create_keras_rl_model()        
+            memory = EpisodeParameterMemory(limit=args.memory_limit, window_length=args.batch_size)
+            agent = Agent(
+                    model=model, nb_actions=nb_actions,
+                    memory=memory, batch_size=args.batch_size,
+                    nb_steps_warmup=args.steps_warmup, train_interval=1,
+                    elite_frac=args.elite_frac)
+            agent.compile()
+        # train or test
+        if args.train == 1:
+            if not args.wandb_flag:
+                # import ipdb; ipdb.set_trace()
+                pass
+            else:
+                pass
+            agent.save_weights(f'cem_{ENV_NAME}_sf{args.sf}_{args.hypo}_params.h5', overwrite=True)
+        elif args.train == 0:
+            agent.load_weights(f'cem_{ENV_NAME}_sf{args.sf}_{args.hypo}_params.h5')
+        elif args.train == -1:
+            agent.load_weights('cem_index_selection_evaluation.h5')
+        env.train = False
+        # env.database.hypo=False
+        test_model()

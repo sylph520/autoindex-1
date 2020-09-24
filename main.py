@@ -13,6 +13,7 @@ from rl.memory import EpisodeParameterMemory, SequentialMemory
 # from sqlserver_executor import sqlserver_executor
 import wandb
 import ray
+from ray import tune
 from ray.tune.registry import register_env
 from ray.tune.logger import pretty_print
 from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG as dqn_default_conf
@@ -139,59 +140,75 @@ def test_rllib():
 if __name__ == '__main__':
    # test_rllib()
     env_name = 'dgame-v0'
+    ray_tune_flag = True
+    # ray_tune_flag = False
     if args.ray_flag:
         ray.init(ignore_reinit_error=True)
         register_env('ray_env', gym_env_creator)
         config = dqn_default_conf.copy()
+        config['env'] = 'ray_env'
         config['env_config'] = {"env_name":"gym_dgame:dgame-v0", "workload_size": args.workload_size}
         config['num_workers'] = 1
-        config['model']['fcnet_hiddens'] = [1, 256]
         config['model']['fcnet_activation'] = 'relu'
-        config['gamma'] = 0.9
-        config['lr'] = 0.001
-        config['train_batch_size'] = 50
-        # trainer0 = DQNTrainer(config, 'CartPole-v1')
-        trainer = DQNTrainer(env='ray_env', config = config)
+        if not ray_tune_flag:
+            # trainer0 = DQNTrainer(config, 'CartPole-v1')
+            config['train_batch_size'] = 50
+            config['gamma'] = 0.9
+            config['lr'] = 0.001
+            config['model']['fcnet_hiddens'] = [4, 8]
+            trainer = DQNTrainer(config = config)
 
-        ckp_root = 'tmp/dqn/it'
-        shutil.rmtree(ckp_root, ignore_errors=True, onerror=None)
-        ray_results='ray_results/'
-        shutil.rmtree(ray_results, ignore_errors=True, onerror = None)
+            ckp_root = 'tmp/dqn/it'
+            shutil.rmtree(ckp_root, ignore_errors=True, onerror=None)
+            ray_results='ray_results/'
+            shutil.rmtree(ray_results, ignore_errors=True, onerror = None)
 
-        n_iter = 50
-        s = "{:3d} reward {:6.2f}/{:6.2f}/{:6.2f} len {:6.2f} saved {}"
+            n_iter = 100
+            s = "{:3d} reward {:6.2f}/{:6.2f}/{:6.2f} len {:6.2f} saved {}"
 
-        results = []
-        episode_data = []
-        episode_json = []
-        result_strs = []
+            results = []
+            episode_data = []
+            episode_json = []
+            result_strs = []
 
-        for n in range(n_iter):
-            result = trainer.train()
-            file_name = trainer.save(ckp_root)
-            results.append(result)
-            episode = {'n': n, 
-                   'episode_reward_min':  result['episode_reward_min'],  
-                   'episode_reward_mean': result['episode_reward_mean'], 
-                   'episode_reward_max':  result['episode_reward_max'],  
-                   'episode_len_mean':    result['episode_len_mean']
-                   }  
-            episode_data.append(episode)
-            episode_json.append(json.dumps(episode))
-            result_strs.append(
-                f'{n:3d}: Min/Mean/Max reward: {result["episode_reward_min"]:8.4f}/{result["episode_reward_mean"]:8.4f}/{result["episode_reward_max"]:8.4f}')
-            # results.append(f'{n+1} reward {result["episode_reward_mean"]:.3f}/'
-            #                f'{result["episode_reward_min"]:.3f}/{result["episode_reward_max"]:.3f}'
-            #                # f'len {result["episode_len_mean"]} saved {file_name}'
-            #                )
-        df = pd.DataFrame(data=episode_data)
-        for i in range(len(result_strs)):
-            print(result_strs[i])
-        bokeh.io.reset_output()
-        bokeh.io.output_notebook()
-        plot_line_with_min_max(df, x_col='n', y_col='episode_reward_mean', min_col='episode_reward_min', max_col='episode_reward_max',
-                          title='Episode Rewards', x_axis_label='n', y_axis_label='reward')
-        print("testing end")
+            for n in range(n_iter):
+                result = trainer.train()
+                file_name = trainer.save(ckp_root)
+                results.append(result)
+                episode = {'n': n,
+                       'episode_reward_min':  result['episode_reward_min'],
+                       'episode_reward_mean': result['episode_reward_mean'],
+                       'episode_reward_max':  result['episode_reward_max'],
+                       'episode_len_mean':    result['episode_len_mean']
+                       }
+                episode_data.append(episode)
+                episode_json.append(json.dumps(episode))
+                result_strs.append(
+                    f'{n:3d}: Min/Mean/Max reward: {result["episode_reward_min"]:8.4f}/{result["episode_reward_mean"]:8.4f}/{result["episode_reward_max"]:8.4f}')
+                # results.append(f'{n+1} reward {result["episode_reward_mean"]:.3f}/'
+                #                f'{result["episode_reward_min"]:.3f}/{result["episode_reward_max"]:.3f}'
+                #                # f'len {result["episode_len_mean"]} saved {file_name}'
+                #                )
+            df = pd.DataFrame(data=episode_data)
+            for i in range(len(result_strs)):
+                print(result_strs[i])
+            bokeh.io.reset_output()
+            bokeh.io.output_notebook()
+            plot_line_with_min_max(df, x_col='n', y_col='episode_reward_mean', min_col='episode_reward_min', max_col='episode_reward_max',
+                              title='Episode Rewards', x_axis_label='n', y_axis_label='reward')
+        else:
+
+            config['train_batch_size'] = 50
+            config['gamma'] = tune.grid_search([0.8, 0.9, 0.95, 0.99])
+            config['lr'] = tune.grid_search([0.01, 0.001, 0.0001])
+            config['model']['fcnet_hiddens'] = [4, 8]
+            analysis = tune.run("DQN",
+                        config=config,
+                        stop={"training_iteration": 10})
+            best_conf = analysis.get_best_config(metric="episode_reward_mean")
+            # gamma.0 9, lr 0.01
+            print("testing end")
+
     else:
         ENV_NAME = 'dgame-v0'
         env = gym_env_creator({})

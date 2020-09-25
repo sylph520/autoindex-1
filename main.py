@@ -89,18 +89,18 @@ else:
 
 def gym_env_creator(env_config):
     ENV_NAME = env_config['env_name']
+    from gym_dgame.envs.dgame_env import DatabaseGameEnv as env
     database = postgres_executor.TPCHExecutor(postgres_config, args.hypo)
-    database.connect()
 
+    database.connect()
     if args.hypo:
         database.execute('create extension if not exists hypopg')
-
     database._connection.commit()
 
-    gym_env = gym.make(ENV_NAME, env_config=env_config)
-    gym_env.initialize(database, args.workload_size, args.index_limit, 1, verbose=args.verbose)
+    env_inst = env(env_config)
+    env_inst.initialize(database, args.workload_size, args.index_limit, 1, verbose=args.verbose)
     
-    return gym_env
+    return env_inst
 
     
 def create_keras_rl_model(v = 0):
@@ -147,7 +147,7 @@ if __name__ == '__main__':
         register_env('ray_env', gym_env_creator)
         config = dqn_default_conf.copy()
         config['env'] = 'ray_env'
-        config['env_config'] = {"env_name":"gym_dgame:dgame-v0", "workload_size": args.workload_size}
+        config['env_config'] = {"env_name":"dgame-v0", "workload_size": args.workload_size}
         config['num_workers'] = 1
         config['model']['fcnet_activation'] = 'relu'
         if not ray_tune_flag:
@@ -163,7 +163,7 @@ if __name__ == '__main__':
             ray_results='ray_results/'
             shutil.rmtree(ray_results, ignore_errors=True, onerror = None)
 
-            n_iter = 100
+            n_iter = 10
             s = "{:3d} reward {:6.2f}/{:6.2f}/{:6.2f} len {:6.2f} saved {}"
 
             results = []

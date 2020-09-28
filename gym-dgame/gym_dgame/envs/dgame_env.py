@@ -88,7 +88,7 @@ class DatabaseGameEnv(gym.Env):
         self.workload_size = workload_size
         self.original_state = self._generate_frame_matrix()
         self.current_state = np.copy(self.original_state)
-        self.observation_space = Box(low=0, high = 1.0, shape =(len(self.columns) * (self.workload_size + 1) + 1,) )
+        self.observation_space = Box(low=0, high = 1.0, shape=(len(self.columns) * (self.workload_size + 1) + 1,), dtype=np.float32)
         self.database.drop_all_indexes()
         self.no_index_cost = self._get_workload_cost()
 

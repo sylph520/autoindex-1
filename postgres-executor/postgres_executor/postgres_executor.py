@@ -13,6 +13,7 @@ class TPCHExecutor:
     '''
     def __init__(self, config: dict):
         self._config = config
+        self._config['port']=51204
 
         self.column_list = [
             'p_partkey',

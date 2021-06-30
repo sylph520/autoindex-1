@@ -47,9 +47,12 @@ parser.add_argument('--nb_steps_train', type=int, default=1000, help='number of 
 
 # Database parameters
 parser.add_argument('--host', default='localhost', help='hostname of database server')
-parser.add_argument('--database', default='ankur', help='database name')
+parser.add_argument('--database', default='indexselection_tpch___1', help='database name')
 parser.add_argument('--user', default='postgres', help='database username')
 parser.add_argument('--password', default='postgres', help='database password')
+
+# added parameters
+parser.add_argument('--mode', default='train', help="train or test")
 
 args = parser.parse_args()
 
@@ -119,7 +122,11 @@ if __name__ == '__main__':
             )
 
     agent.compile()
-    agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
-    agent.save_weights('cem_{}_params.h5'.format(ENV_NAME), overwrite=True)
-    env.train = False
-    agent.test(env, nb_episodes=args.nb_steps_test, visualize=True)
+
+    if args.mode == 'train':
+        agent.fit(env, nb_steps=args.nb_steps_train, visualize=False, verbose=args.verbose)
+        agent.save_weights('cem_{}_params.h5'.format(ENV_NAME), overwrite=True)
+        env.train = False
+    elif args.mode == 'test':
+        agent.load_weights('cem_{}_params.h5'.format(ENV_NAME))
+        agent.test(env, nb_episodes=args.nb_steps_test, visualize=False)

@@ -153,6 +153,7 @@ class DatabaseGameEnv(gym.Env):
     def _reset(self):
         # @return: state after reset
         self.database.drop_all_indexes()
+        self.database.reset_stats()
         if (not self.train) or (self.train_episode_count % self.repeat_size == 0):
             self.original_state = self._generate_frame_matrix()
             self.no_index_cost = self._get_workload_cost()

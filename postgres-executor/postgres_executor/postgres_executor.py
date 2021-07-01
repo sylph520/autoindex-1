@@ -191,6 +191,15 @@ class TPCHExecutor:
         table = self.table_name(column_name)
         query = 'DROP INDEX IF EXISTS {}_{}_IDX;'.format(table, column_name)
         self.execute(query)
+    
+    def set_random_seed(self, value=0.17):
+        self.execute(f"select setseed({value})")
+
+    def reset_stats(self):
+        self._connection.commit()
+        self._connection.autocommit = True
+        self.execute('analyze')
+        self._connection.autocommit = False
 
     def drop_all_indexes(self):
         '''
@@ -199,9 +208,24 @@ class TPCHExecutor:
         for column in self.column_list:
             self.drop_index(column)
         # print('TPCHExecutor: Dropped all indexes')
+        self.reset_stats()
 
     def get_column_list(self):
         '''
         Get a list of all columns in TPC-H Schema
         '''
         return self.column_list
+
+if __name__ == "__main__":
+    """testing the module functions
+    """
+    postgres_config = {
+        'host': '/tmp',
+        'database': 'indexselection_tpch___1',
+        'user': 'sclai' 
+        }
+
+    db = TPCHExecutor(postgres_config)
+    db.connect()
+    db.reset_stats()
+    pass
